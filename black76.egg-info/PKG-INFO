@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: black76
+Version: 0.1.0
+Summary: Black-76 option pricing, Greeks and implied vol for energy markets
+Requires-Python: >=3.10
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: mypy; extra == "dev"

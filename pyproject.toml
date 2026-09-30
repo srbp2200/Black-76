@@ -1,0 +1,18 @@
+[project]
+name = "black76"
+version = "0.1.0"
+description = "Black-76 option pricing, Greeks and implied vol for energy markets"
+requires-python = ">=3.10"
+ 
+[project.optional-dependencies]
+dev = ["pytest", "mypy"]
+ 
+[tool.setuptools]
+packages = ["black76"]
+ 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+ 
+[tool.mypy]
+strict = true
+ 

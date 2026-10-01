@@ -129,7 +129,7 @@ def asian_price_mc(
 
     def average_of(paths: FloatArray) -> FloatArray:
         fixings: FloatArray = forward_price * np.exp(drift + vol * paths)
-        return (avg.fixed_sum + fixings.sum(axis=1)) / avg.n_total
+        return np.asarray((avg.fixed_sum + fixings.sum(axis=1)) / avg.n_total)
 
     payoffs: FloatArray = 0.5 * (payoff(average_of(brownian)) + payoff(average_of(-brownian)))
     price: float = df * float(payoffs.mean())

@@ -1,6 +1,6 @@
 from math import exp, log, pi, sqrt, erf
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, get_args
 
 Kind = Literal["call", "put"]
 
@@ -10,41 +10,41 @@ def _norm_cdf(x: float) -> float:
 def _norm_pdf(x: float) -> float:
     return (1.0 / sqrt(2.0 * pi)) * exp(-0.5 * x**2)
 
-def _validate(F: float, K: float, T: float, sigma: float, kind:str) -> None:
-    if F<=0.0 or K <= 0.0:
+def _validate(forward_price: float, strike_price: float, time_to_expiry: float, vol: float, kind: Kind) -> None:
+    if forward_price <= 0.0 or strike_price <= 0.0:
         raise ValueError(
-            "Black-76 requires F > 0 and K > 0 (lognormal model; "
+            "Black-76 requires forward_price > 0 and strike_price > 0 (lognormal model; "
             "use a Bachelier/normal model for negative prices."
         )
-    if T < 0.0:
-        raise ValueError("T must be >= 0.")
-    if sigma < 0.0:
-        raise ValueError("sigma must be >= 0")
-    if kind not in ("call", "put"):
+    if time_to_expiry < 0.0:
+        raise ValueError("time_to_expiry must be >= 0.")
+    if vol < 0.0:
+        raise ValueError("vol must be >= 0")
+    if kind not in get_args(Kind):
         raise ValueError("kind must be 'call' or 'put'.")
 
-def _d1_d2(F: float, K: float, T: float, sigma: float) -> tuple[float, float]:
-    vol_sqrt_t = sigma * sqrt(T)
-    d1 = (log(F / K) + 0.5 * vol_sqrt_t**2) / vol_sqrt_t
+def _d1_d2(forward_price: float, strike_price: float, time_to_expiry: float, vol: float) -> tuple[float, float]:
+    vol_sqrt_t = vol * sqrt(time_to_expiry)
+    d1 = (log(forward_price / strike_price) + 0.5 * vol_sqrt_t**2) / vol_sqrt_t
     return d1, d1 - vol_sqrt_t
 
 def black76_price(
-    F: float,   #current future price
-    K: float,   #strike price
-    T: float,   #time to option expiry
-    r: float,   #continuously compounded risk-free interest rate
-    sigma: float,   #volatility
+    forward_price: float,   # (F) futures/forward price for option's expiry
+    strike_price: float,    # (K) strike
+    time_to_expiry: float,  # (T) in years
+    risk_free_rate: float,  # (r) continuously compounded
+    vol: float,             # (sigma) lognormal volatility as decimal
     kind: Kind = "call"
 ) -> float:
-    _validate(F, K, T, sigma, kind)
-    df = exp(-r * T)    #risk-free discount factor
-    if T == 0.0 or sigma == 0.0:
-        intrinsic = max(F - K, 0.0) if kind == "call" else max(K - F, 0.0)
+    _validate(forward_price, strike_price, time_to_expiry, vol, kind)
+    df = exp(-risk_free_rate * time_to_expiry)    #risk-free discount factor
+    if time_to_expiry == 0.0 or vol == 0.0:
+        intrinsic = max(forward_price - strike_price, 0.0) if kind == "call" else max(strike_price - forward_price, 0.0)
         return df * intrinsic
-    d1, d2 = _d1_d2(F, K, T, sigma)
+    d1, d2 = _d1_d2(forward_price, strike_price, time_to_expiry, vol)
     if kind == "call":
-        return df * (F * _norm_cdf(d1) - K * _norm_cdf(d2))
-    return df * (K * _norm_cdf(-d2) - F * _norm_cdf(-d1))
+        return df * (forward_price * _norm_cdf(d1) - strike_price * _norm_cdf(d2))
+    return df * (strike_price * _norm_cdf(-d2) - forward_price * _norm_cdf(-d1))
 
 #-------------------------- GREEKS --------------------------
 @dataclass(frozen=True)
@@ -57,31 +57,31 @@ class Greeks:
     rho: float
 
 def black76_greeks(
-    F: float,
-    K: float,
-    T: float,
-    r: float,
-    sigma: float,
+    forward_price: float,
+    strike_price: float,
+    time_to_expiry: float,
+    risk_free_rate: float,
+    vol: float,
     kind: Kind = "call"
 ) -> Greeks:
-    _validate(F, K, T, sigma, kind)
-    if T == 0.0 or sigma == 0.0:
-        raise ValueError("Greeks require T > 0 and sigma > 0")
+    _validate(forward_price, strike_price, time_to_expiry, vol, kind)
+    if time_to_expiry == 0.0 or vol == 0.0:
+        raise ValueError("Greeks require time_to_expiry > 0 and vol > 0")
 
-    df = exp(-r * T)
-    d1, d2 = _d1_d2(F, K, T, sigma)
+    df = exp(-risk_free_rate * time_to_expiry)
+    d1, d2 = _d1_d2(forward_price, strike_price, time_to_expiry, vol)
 
     if kind == "call":
-        price = df * (F * _norm_cdf(d1) - K * _norm_cdf(d2))
+        price = df * (forward_price * _norm_cdf(d1) - strike_price * _norm_cdf(d2))
         delta = df * _norm_cdf(d1)
     else:
-        price = df * (K * _norm_cdf(-d2) - F * _norm_cdf(-d1))
+        price = df * (strike_price * _norm_cdf(-d2) - forward_price * _norm_cdf(-d1))
         delta = -df * _norm_cdf(-d1)
 
-    gamma = df * _norm_pdf(d1) / (F * sigma * sqrt(T))
-    vega = df * F * _norm_pdf(d1) * sqrt(T)
-    theta = r * price - df * F * _norm_pdf(d1) * sigma / (2.0 * sqrt(T))
-    rho = -T * price
+    gamma = df * _norm_pdf(d1) / (forward_price * vol * sqrt(time_to_expiry))
+    vega = df * forward_price * _norm_pdf(d1) * sqrt(time_to_expiry)
+    theta = risk_free_rate * price - df * forward_price * _norm_pdf(d1) * vol / (2.0 * sqrt(time_to_expiry))
+    rho = -time_to_expiry * price
     return Greeks(price, delta, gamma, vega, theta, rho)
 
     
